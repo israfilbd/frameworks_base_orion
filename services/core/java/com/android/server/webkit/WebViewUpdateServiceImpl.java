@@ -15,6 +15,7 @@
  */
 package com.android.server.webkit;
 
+import android.app.AppGlobals;
 import android.annotation.Nullable;
 import android.content.Context;
 import android.content.pm.PackageInfo;
@@ -23,6 +24,7 @@ import android.content.pm.Signature;
 import android.os.AsyncTask;
 import android.os.Trace;
 import android.os.UserHandle;
+import android.util.AndroidRuntimeException;
 import android.util.Slog;
 import android.webkit.UserPackage;
 import android.webkit.WebViewFactory;
@@ -183,9 +185,12 @@ class WebViewUpdateServiceImpl implements WebViewUpdateServiceInterface {
                 }
                 onWebViewProviderChanged(mCurrentWebViewPackage);
             }
+        } catch (WebViewPackageMissingException e) {
+            Slog.e(TAG, "Could not find valid WebView package to create relro with", e);
         } catch (Throwable t) {
-            // Log and discard errors at this stage as we must not crash the system server.
-            Slog.e(TAG, "error preparing webview provider from system server", t);
+            // We don't know a case when this should happen but we log and discard errors at this
+            // stage as we must not crash the system server.
+            Slog.wtf(TAG, "error preparing webview provider from system server", t);
         }
 
         if (getCurrentWebViewPackage() == null) {
@@ -388,9 +393,24 @@ class WebViewUpdateServiceImpl implements WebViewUpdateServiceInterface {
 
     @Override
     public WebViewProviderInfo getDefaultWebViewPackage() {
-        throw new IllegalStateException(
-                "getDefaultWebViewPackage shouldn't be called if update_service_v2 flag is"
-                        + " disabled.");
+        for (WebViewProviderInfo provider : getWebViewPackages()) {
+            if (provider.availableByDefault && isPackageAvailable(provider.packageName)) {
+                return provider;
+            }
+        }
+
+        // This should be unreachable because the config parser enforces that there is at least
+        // one availableByDefault provider.
+        throw new AndroidRuntimeException("No available by default WebView Provider.");
+    }
+
+    private static boolean isPackageAvailable(String packageName) {
+        try {
+            AppGlobals.getInitialApplication().getPackageManager().getPackageInfo(packageName, 0);
+            return true;
+        } catch (NameNotFoundException e) {
+            return false;
+        }
     }
 
     private static class ProviderAndPackageInfo {
@@ -631,7 +651,7 @@ class WebViewUpdateServiceImpl implements WebViewUpdateServiceInterface {
      */
     private static WebViewProviderInfo getFallbackProvider(WebViewProviderInfo[] webviewPackages) {
         for (WebViewProviderInfo provider : webviewPackages) {
-            if (provider.isFallback) {
+            if (provider.isFallback && isPackageAvailable(provider.packageName)) {
                 return provider;
             }
         }

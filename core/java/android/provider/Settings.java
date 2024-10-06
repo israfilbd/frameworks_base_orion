@@ -7079,6 +7079,14 @@ public final class Settings {
         public static final String ARCANE_IDLE_MANAGER = "arcane_idle_manager";
 
         /**
+         * Whether three fingers swipe is active
+         * 0 = Inactive, 1 = Active
+         * @hide
+         */
+        @Readable
+        public static final String THREE_FINGER_GESTURE_ACTIVE = "three_fingers_swipe_active";
+
+        /**
          * Clock font size
          * @hide
          */
